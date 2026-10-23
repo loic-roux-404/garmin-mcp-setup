@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+.git/
+*.log
+vendor/node_modules/.bin/

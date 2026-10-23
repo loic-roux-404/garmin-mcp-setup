@@ -1,0 +1,38 @@
+services:
+  garmin-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: garmin-mcp:local
+    container_name: garmin-mcp
+    restart: unless-stopped
+    environment:
+      GARMIN_PERSONAL_API_KEY: ${GARMIN_PERSONAL_API_KEY:?set GARMIN_PERSONAL_API_KEY in .env}
+      # Required in HTTP mode: without it every request answers 503.
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?set MCP_BEARER_TOKEN in .env}
+      # Container-internal bind. Host exposure stays loopback-only via `ports`.
+      MCP_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      # ~/.config: the ~24h Garmin token cache (mode 0600) survives restarts.
+      - garmin-config:/home/node/.config
+    healthcheck:
+      # The server serves only /mcp: /health is 404 and an unauthenticated call is 401.
+      # Send a real initialize with the token; accept any 2xx/4xx as "process is up".
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -S -O /dev/null
+          --header="Authorization: Bearer $$MCP_BEARER_TOKEN"
+          --header="Accept: application/json, text/event-stream"
+          --header="Content-Type: application/json"
+          --post-data='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"healthcheck","version":"0"}}}'
+          http://127.0.0.1:8787/mcp 2>&1 | grep -qE 'HTTP/1\.[01] (200|400|405)'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  garmin-config:
